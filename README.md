@@ -1,0 +1,2 @@
+# HTSR_Handwritten_Text_Similarity_Recognition
+ 
