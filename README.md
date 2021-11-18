@@ -2,4 +2,5 @@
  
 To-Dos:
 
-- create datasets with smaller images
+- ~~create datasets with smaller images~~
+- Reduce overfitting
