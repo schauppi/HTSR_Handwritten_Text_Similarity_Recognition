@@ -8,6 +8,9 @@ from paths import dataset_paths
 from PIL import Image, ImageOps, ImageDraw
 import numpy as np
 
+import tensorflow as tf
+from tensorflow.keras import backend as K
+
 
 def resize_and_keep_ratio(path, height):
     """
@@ -158,3 +161,35 @@ def create_batch(batch_size, height, width, path):
     x_2 = x_2[randomize]
 
     return [x_1, x_2], y 
+
+def euclidean_distance(vectors):
+    """
+    Calculates the euclidian distance between two vectors
+    
+    Arguments:
+        vectors: List containing two tensors of same length
+    
+    Return:
+        Tensor containing euclidian distance between vectors
+    """
+    (featsA, featsB) = vectors
+    sumSquared = K.sum(K.square(featsA - featsB), axis=1,keepdims=True)
+    return K.sqrt(K.maximum(sumSquared, K.epsilon()))
+
+def contrastive_loss(y, preds, margin=1):
+    """
+    Calculates the contrastive loss
+    
+    Arguments:
+        y: List of labels
+        preds: List of predicted labels with same length as y
+        margin: Intergervalue, defines the baseline distance for which pairs should be classified as dissimilar
+    
+    Returns:
+        A tensor containing constrastive loss
+    """
+    y = tf.cast(y, preds.dtype)
+    squaredPreds = K.square(preds)
+    squaredMargin = K.square(K.maximum(margin - preds, 0))
+    loss = K.mean(y * squaredPreds + (1 - y) * squaredMargin)
+    return loss
