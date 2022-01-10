@@ -7,6 +7,7 @@ from paths import dataset_paths
 
 from PIL import Image, ImageOps, ImageDraw
 import numpy as np
+from numpy import load
 
 import tensorflow as tf
 from tensorflow.keras import backend as K
@@ -172,24 +173,102 @@ def euclidean_distance(vectors):
     Return:
         Tensor containing euclidian distance between vectors
     """
-    (featsA, featsB) = vectors
-    sumSquared = K.sum(K.square(featsA - featsB), axis=1,keepdims=True)
-    return K.sqrt(K.maximum(sumSquared, K.epsilon()))
+    x, y = vectors
+    sum_square = tf.math.reduce_sum(tf.math.square(x - y), axis=1, keepdims=True)
+    return tf.math.sqrt(tf.math.maximum(sum_square, tf.keras.backend.epsilon()))
 
-def contrastive_loss(y, preds, margin=1):
+def contrastive_loss(y_true, y_pred, margin=1):
     """
     Calculates the contrastive loss
     
     Arguments:
-        y: List of labels
-        preds: List of predicted labels with same length as y
+        y_true: List of labels
+        y_pred: List of predicted labels with same length as y
         margin: Intergervalue, defines the baseline distance for which pairs should be classified as dissimilar
     
     Returns:
         A tensor containing constrastive loss
     """
-    y = tf.cast(y, preds.dtype)
-    squaredPreds = K.square(preds)
-    squaredMargin = K.square(K.maximum(margin - preds, 0))
-    loss = K.mean(y * squaredPreds + (1 - y) * squaredMargin)
-    return loss
+    square_pred = tf.math.square(y_pred)
+    margin_square = tf.math.square(tf.math.maximum(margin - (y_pred), 0))
+    return tf.math.reduce_mean( (1 - y_true) * square_pred + (y_true) * margin_square)
+    
+
+def load_arrays(path1, path2):
+    """
+    Function for load .npz files from disc
+    
+    Arguments
+        path1: Path to file 1 in string format (x data)
+        path2: Path to file 2 in string format (y data)
+        
+    Returns:
+        x and y data in numpy array format
+    """
+    dict_data_x = load(path1)
+    dict_data_y = load(path2)
+    x = dict_data_x['arr_0']
+    y = dict_data_y['arr_0']
+    return x, y
+
+def plot_training(H):
+    """
+    Function for plotting model training
+    
+    Arguments
+        H: training history of the tensorflow model.fit function
+        
+    Returns:
+        Plot of the training loss
+    """
+    plt.style.use("ggplot")
+    plt.figure()
+    plt.plot(H.history["loss"], label="train_loss")
+    plt.plot(H.history["val_loss"], label="val_loss")
+    plt.plot(H.history["accuracy"], label="train_acc")
+    plt.plot(H.history["val_accuracy"], label="val_acc")
+    plt.title("Training Loss and Accuracy")
+    #plt.title("Training Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss/Accuracy")
+    #plt.ylabel("Loss")
+    plt.legend(loc="lower left")
+    
+def load_and_split_data(path_x, path_y, split_size, batch_size):
+    """
+    Function for loading and splitting the. The validation size is fixed to 5% of the whole dataset.
+    
+    Arguments:
+        path_x: Path to x data
+        path_y: Path to y data
+        split_size: Split size for train split in integer, eg. 80
+        
+    Returns:
+        Returns 3 tf.data.dataset - train, test and val
+    """
+    
+    x, y = load_arrays(path_x, path_y)
+    
+    #calculate length of the splits
+    len_train_data = int(len(x[0]) * (split_size/100))
+    len_val_data = int(len(x[0]) * (split_size/100)*0.05)
+    len_test_data = int(len(x[0]) - len_train_data - len_val_data)
+    
+    #index the arrays to split the data
+    x_train_0 = x[0][0 :len_train_data]
+    x_train_1 = x[1][0 :len_train_data]
+    y_train = y[:len_train_data]
+    
+    x_test_0 = x[0][len_train_data:len_train_data+len_test_data] 
+    x_test_1 = x[1][len_train_data:len_train_data+len_test_data]
+    y_test = y[len_train_data:len_train_data+len_test_data]
+    
+    x_val_0 = x[0][len_train_data+len_test_data:]
+    x_val_1 = x[1][len_train_data+len_test_data:]
+    y_val = y[len_train_data+len_test_data:]
+    
+    train_dataset = tf.data.Dataset.from_tensor_slices(((x_train_0, x_train_1), y_train)).shuffle(100).batch(batch_size)
+    test_dataset = tf.data.Dataset.from_tensor_slices(((x_test_0, x_test_1), y_test)).shuffle(100).batch(batch_size)
+    val_dataset = tf.data.Dataset.from_tensor_slices(((x_val_0, x_val_1), y_val)).shuffle(100).batch(batch_size)
+    
+    return train_dataset, test_dataset, val_dataset
