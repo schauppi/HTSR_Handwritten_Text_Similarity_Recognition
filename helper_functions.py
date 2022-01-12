@@ -12,6 +12,11 @@ from numpy import load
 import tensorflow as tf
 from tensorflow.keras import backend as K
 
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import roc_curve
+from sklearn.metrics import precision_recall_curve
+
 
 def resize_and_keep_ratio(path, height):
     """
@@ -272,3 +277,79 @@ def load_and_split_data(path_x, path_y, split_size, batch_size):
     val_dataset = tf.data.Dataset.from_tensor_slices(((x_val_0, x_val_1), y_val)).shuffle(100).batch(batch_size)
     
     return train_dataset, test_dataset, val_dataset
+
+def get_model_predictions(dataset, model):
+    """
+    Function for predictions by keras model
+    
+    Arguments:
+        dataset: tf.data.dataset format dataset
+        model: the trained keras model
+    Returns:
+        predictions and labels in numpy format
+    """
+    
+    data = dataset.take(1)
+    preds = tf.round(model.predict(data))
+    preds = preds.numpy()
+    for images, labels in data: 
+        labels = labels.numpy()
+
+    preds = np.squeeze(preds)
+    labels = np.squeeze(labels)
+    
+    return preds, labels
+    
+
+def plot_confusion_matrix(preds, labels):
+    """
+    Function for plotting an confusion matrix for binary classification
+    
+    Arguments:
+        preds: predictions in numpy format
+        labels: labels in numpy format
+    Returns:
+        Seaborn plot of confusion matrix
+    """
+
+    cf_matrix = confusion_matrix(labels, preds)
+    
+    group_names = ['True Neg','False_Pos','False_Neg','True_Pos']
+    group_counts = ['{0:0.0f}'.format(value) for value in cf_matrix.flatten()]
+    group_percentages = ['{0:.2%}'.format(value) for value in cf_matrix.flatten()/np.sum(cf_matrix)]
+    labels = [f'{v1}\n{v2}\n{v3}' for v1, v2, v3 in zip(group_names,group_counts,group_percentages)]
+    labels = np.asarray(labels).reshape(2,2)
+    sns.heatmap(cf_matrix, annot=labels, fmt='', cmap='Blues')
+    
+def plot_roc_curve(preds, labels):
+    """
+    Function for plotting an roc curve for binary classification
+    
+    Arguments:
+        preds: predictions in numpy format
+        labels: labels in numpy format
+    Returns:
+        Matplotlib plot of roc curve
+    """
+
+    fpr, tpr, _ = roc_curve(labels, preds)
+    plt.plot(fpr, tpr)
+    plt.title('ROC curve')
+    plt.xlabel('false positive rate')
+    plt.ylabel('true positive rate')
+    plt.xlim(0,)
+    plt.ylim(0,)
+    plt.show()
+    
+def plot_prec_rec_curve(preds, labels):
+    precision, recall, _ = precision_recall_curve(labels, preds)
+    plt.plot(recall, precision)
+    plt.title('PR curve')
+    plt.xlabel('recall')
+    plt.ylabel('precision')
+    plt.xlim(0,)
+    plt.ylim(0,)
+    plt.show()
+
+    
+    
