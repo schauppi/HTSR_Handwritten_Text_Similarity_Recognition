@@ -18,14 +18,14 @@ from sklearn.metrics import roc_curve
 from sklearn.metrics import precision_recall_curve
 
 
-def resize_and_keep_ratio(path, height):
+def resize_and_keep_ratio(path, height, rgb=False):
     """
     Randomly select an image out if given path, resizes it to specific height and keeping the same aspect ratio
     
     Arguments:
         path: List with Paths to the images
         height: int value with desired image height
-        
+        rgb: Images should be loaded in grascale or RGB - default is False, means grayscale is default
     Returns:
         Resized image in an PIL Image format
     """
@@ -36,7 +36,11 @@ def resize_and_keep_ratio(path, height):
     #select random images
     images = random.sample(os.listdir(folder), 1)
 
-    image = Image.open(folder + "/" + images[0]).convert("L")
+    if rgb == True:
+        image = Image.open(folder + "/" + images[0])
+    else:
+        image = Image.open(folder + "/" + images[0]).convert("L")
+        
     if image.size[0] > 500:
         #Get a copy of the image for plotting
         image_before = image
