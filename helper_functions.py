@@ -243,7 +243,7 @@ def plot_training(H):
     #plt.ylabel("Loss")
     plt.legend(loc="lower left")
     
-def load_and_split_data(path_x, path_y, split_size, batch_size):
+def load_and_split_data(path_x, path_y, split_size, batch_size, triplet=False):
     """
     Function for loading and splitting the. The validation size is fixed to 5% of the whole dataset.
     
@@ -258,27 +258,54 @@ def load_and_split_data(path_x, path_y, split_size, batch_size):
     
     x, y = load_arrays(path_x, path_y)
     
-    #calculate length of the splits
-    len_train_data = int(len(x[0]) * (split_size/100))
-    len_val_data = int(len(x[0]) * (split_size/100)*0.05)
-    len_test_data = int(len(x[0]) - len_train_data - len_val_data)
+    if triplet == True:
+        #calculate length of the splits
+        len_train_data = int(len(x[0]) * (split_size/100))
+        len_val_data = int(len(x[0]) * (split_size/100)*0.05)
+        len_test_data = int(len(x[0]) - len_train_data - len_val_data)
+
+        #index the arrays to split the data
+        x_train_0 = x[0][0 :len_train_data]
+        x_train_1 = x[1][0 :len_train_data]
+        x_train_2 = x[2][0 :len_train_data]
+        y_train = y[:len_train_data]
+
+        x_test_0 = x[0][len_train_data:len_train_data+len_test_data] 
+        x_test_1 = x[1][len_train_data:len_train_data+len_test_data]
+        x_test_2 = x[2][len_train_data:len_train_data+len_test_data]
+        y_test = y[len_train_data:len_train_data+len_test_data]
+
+        x_val_0 = x[0][len_train_data+len_test_data:]
+        x_val_1 = x[1][len_train_data+len_test_data:]
+        x_val_2 = x[2][len_train_data+len_test_data:]
+        y_val = y[len_train_data+len_test_data:]
+        
+        train_dataset = tf.data.Dataset.from_tensor_slices(((x_train_0, x_train_1, x_train_2))).shuffle(100).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        test_dataset = tf.data.Dataset.from_tensor_slices(((x_test_0, x_test_1, x_test_2), y_test)).shuffle(100).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        val_dataset = tf.data.Dataset.from_tensor_slices(((x_val_0, x_val_1, x_val_2), y_val)).shuffle(100).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        
+    else:
+        #calculate length of the splits
+        len_train_data = int(len(x[0]) * (split_size/100))
+        len_val_data = int(len(x[0]) * (split_size/100)*0.05)
+        len_test_data = int(len(x[0]) - len_train_data - len_val_data)
+
+        #index the arrays to split the data
+        x_train_0 = x[0][0 :len_train_data]
+        x_train_1 = x[1][0 :len_train_data]
+        y_train = y[:len_train_data]
+
+        x_test_0 = x[0][len_train_data:len_train_data+len_test_data] 
+        x_test_1 = x[1][len_train_data:len_train_data+len_test_data]
+        y_test = y[len_train_data:len_train_data+len_test_data]
+
+        x_val_0 = x[0][len_train_data+len_test_data:]
+        x_val_1 = x[1][len_train_data+len_test_data:]
+        y_val = y[len_train_data+len_test_data:]
     
-    #index the arrays to split the data
-    x_train_0 = x[0][0 :len_train_data]
-    x_train_1 = x[1][0 :len_train_data]
-    y_train = y[:len_train_data]
-    
-    x_test_0 = x[0][len_train_data:len_train_data+len_test_data] 
-    x_test_1 = x[1][len_train_data:len_train_data+len_test_data]
-    y_test = y[len_train_data:len_train_data+len_test_data]
-    
-    x_val_0 = x[0][len_train_data+len_test_data:]
-    x_val_1 = x[1][len_train_data+len_test_data:]
-    y_val = y[len_train_data+len_test_data:]
-    
-    train_dataset = tf.data.Dataset.from_tensor_slices(((x_train_0, x_train_1), y_train)).shuffle(100).batch(batch_size)
-    test_dataset = tf.data.Dataset.from_tensor_slices(((x_test_0, x_test_1), y_test)).shuffle(100).batch(batch_size)
-    val_dataset = tf.data.Dataset.from_tensor_slices(((x_val_0, x_val_1), y_val)).shuffle(100).batch(batch_size)
+        train_dataset = tf.data.Dataset.from_tensor_slices(((x_train_0, x_train_1), y_train)).shuffle(100).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        test_dataset = tf.data.Dataset.from_tensor_slices(((x_test_0, x_test_1), y_test)).shuffle(100).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        val_dataset = tf.data.Dataset.from_tensor_slices(((x_val_0, x_val_1), y_val)).shuffle(100).batch(batch_size).prefetch(tf.data.AUTOTUNE)
     
     return train_dataset, test_dataset, val_dataset
 
