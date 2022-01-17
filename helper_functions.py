@@ -280,7 +280,7 @@ def load_and_split_data(path_x, path_y, split_size, batch_size, triplet=False):
         x_val_2 = x[2][len_train_data+len_test_data:]
         y_val = y[len_train_data+len_test_data:]
         
-        train_dataset = tf.data.Dataset.from_tensor_slices(((x_train_0, x_train_1, x_train_2))).shuffle(100).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        train_dataset = tf.data.Dataset.from_tensor_slices(((x_train_0, x_train_1, x_train_2), y_train)).shuffle(100).batch(batch_size).prefetch(tf.data.AUTOTUNE)
         test_dataset = tf.data.Dataset.from_tensor_slices(((x_test_0, x_test_1, x_test_2), y_test)).shuffle(100).batch(batch_size).prefetch(tf.data.AUTOTUNE)
         val_dataset = tf.data.Dataset.from_tensor_slices(((x_val_0, x_val_1, x_val_2), y_val)).shuffle(100).batch(batch_size).prefetch(tf.data.AUTOTUNE)
         
