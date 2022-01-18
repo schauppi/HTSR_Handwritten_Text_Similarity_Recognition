@@ -14,7 +14,7 @@ from tensorflow.keras import backend as K
 
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
-from sklearn.metrics import roc_curve
+from sklearn.metrics import roc_curve, roc_auc_score
 from sklearn.metrics import precision_recall_curve
 
 
@@ -56,7 +56,7 @@ def resize_and_keep_ratio(path, height, rgb=False):
     
 def crop_image(image, crop_width):
     """
-    Crops an random part out of an image and display the cropped area
+    Crops an random part out of an image
     
     Arguments:
         image: image in an numpy array format
@@ -73,6 +73,28 @@ def crop_image(image, crop_width):
     crop = img_array[0:crop_width, x: x + crop_width]
 
     return crop
+
+def crop_image_triplet_loss(image, crop_width):
+    """
+    Crops two random parts out of an image
+    
+    Arguments:
+        image: image in an numpy array format
+        width: int value width desired crop width
+        
+    Return:
+        Cropped image in an numpy array format
+    """
+    #Convert PIL Image object into numpy array
+    img_array = np.array(image)
+    #select random point on x-axis and crop the image
+    x_max = img_array.shape[1] - crop_width
+    x_1 = np.random.randint(0, x_max)
+    x_2 = np.random.randint(0, x_max)
+    crop_1 = img_array[0:crop_width, x_1: x_1 + crop_width]
+    crop_2 = img_array[0:crop_width, x_2: x_2 + crop_width]
+
+    return crop_1, crop_2
 
 def data_generator(batch_size=256):
     """
@@ -202,6 +224,41 @@ def contrastive_loss(y_true, y_pred, margin=1):
     margin_square = tf.math.square(tf.math.maximum(margin - (y_pred), 0))
     return tf.math.reduce_mean( (1 - y_true) * square_pred + (y_true) * margin_square)
     
+def triplet_loss_l2(alpha, emb_size):
+    """
+    Calculates the triplet loss with eucledian distance function
+    
+    Arguments:
+        alpha: bias margin for distance calculation
+        embedding: embedded output from siamese model
+        
+    Returns:
+        A tensor containing triplet loss
+    """
+    def loss(y_true, y_pred):
+        anc, pos, neg = y_pred[:,:emb_size], y_pred[:,emb_size:2*emb_size], y_pred[:,2*emb_size:]
+        distance1 = tf.sqrt(tf.reduce_sum(tf.pow(anc - pos, 2), 1, keepdims=True))
+        distance2 = tf.sqrt(tf.reduce_sum(tf.pow(anc - neg, 2), 1, keepdims=True))
+        return tf.reduce_mean(tf.maximum(distance1 - distance2 + alpha, 0.))
+    return loss
+
+def triplet_loss_cosine(alpha, emb_size):
+    """
+    Calculates the triplet loss with cosine distance function
+    
+    Arguments:
+        alpha: bias margin for distance calculation
+        embedding: embedded output from siamese model
+        
+    Returns:
+        A tensor containing triplet loss
+    """
+    def loss(y_true, y_pred):
+        anc, pos, neg = y_pred[:,:emb_size], y_pred[:,emb_size:2*emb_size], y_pred[:,2*emb_size:]
+        distance1 = tf.keras.losses.cosine_similarity(anc, pos)
+        distance2 = tf.keras.losses.cosine_similarity(anc, neg)
+        return tf.keras.backend.clip(distance1 - distance2 + alpha, 0., None)
+    return loss
 
 def load_arrays(path1, path2):
     """
@@ -407,3 +464,57 @@ def evaluate_preds(model, data):
            "f1-score": f1_score,
            "precision": precision,
            "recall": recall}
+
+def plot_triplet_roc_curve(model, dataset, model_name, emb_size):
+    """
+    Function for plotting the roc curve of siamese model trained on triplet loss
+    
+    Arguments:
+        model: trained keras classifier
+        dataset: evaluation dataset
+        model_name: model name in string format
+        emb_size: embedding size of the model output vectors
+        
+    Returns:
+        Matplotlib plot of the roc curve
+    """
+    #get model predictions
+    results = model.predict(dataset)
+    y_score = []
+    y_true = []
+    #iterate over all triplets and get distances between anchor/positive, anchor/negative
+    #append labels to list y_true - 1 if anchor/positive, else 0
+    for i in range(len(results)):
+        anchor = results[i][:emb_size]
+        positive = results[i][emb_size:emb_size*2]
+        negative = results[i][emb_size*2:]
+        distance1 = tf.sqrt(tf.reduce_sum(tf.pow(anchor - positive, 2), axis=-1)).numpy()
+        y_true.append(1)
+        y_score.append((distance1 * -1))
+        distance2 = tf.sqrt(tf.reduce_sum(tf.pow(anchor - negative, 2), axis=-1)).numpy()
+        y_true.append(0)
+        y_score.append((distance2 * -1))
+    
+    #get list in numpy array format
+    y_score = np.array(y_score)
+    y_true = np.array(y_true)
+    
+    #predict fpr, tpr and auc score
+    fpr, tpr, thresholds = roc_curve(y_true, y_score)
+    auc_score = roc_auc_score(y_true, y_score)
+    
+    #calculate best threshold
+    gmeans = np.sqrt(tpr * (1-fpr))
+    ix = np.argmax(gmeans)
+
+    #plot the roc curve
+    plt.plot(fpr, tpr, label=f"{model_name} ,auc: {auc_score}")
+    plt.plot([0,1], [0,1], linestyle="--", label=f"No Skill")
+    plt.scatter(fpr[ix], tpr[ix], marker="o", color="black", label="Best")
+    plt.title(f'ROC curve, \nBest threshold: {thresholds[ix]}')
+    plt.xlabel('false positive rate')
+    plt.ylabel('true positive rate')
+    plt.xlim(0,)
+    plt.ylim(0,)
+    plt.legend()
+    plt.show()
