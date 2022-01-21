@@ -48,3 +48,31 @@ dataset_paths = [hand_A_20, hand_B_20, hand_A_30, hand_B_216, hand_A_218, hand_B
                 hand_A_248, hand_B_248, hand_252_A, hand_252_B, hand_252_C, hand_A_253, hand_B_253, hand_A_254, 
                 hand_B_254, hand_C_254, hand_A_255, hand_A_257, hand_A_260, hand_B_260, hand_C_260, hand_D_260,
                 hand_E_260, hand_A_706, hand_A_707]
+
+dataset_paths_duplicate = []
+for i in range(len(dataset_paths)):
+    folder = []
+    folder.append(dataset_paths[i])
+    dataset_paths_duplicate.append(folder)
+
+#Create a matrix for plotting the embedding - every class against each other
+path_matrix = []
+for i in range(len(dataset_paths_duplicate)):
+    cache_list_first_element = []
+    cache_list_other_elements = []
+    cache_list_first_element.append(dataset_paths_duplicate[i])
+    cache_list_other_elements = dataset_paths_duplicate[:i]+dataset_paths_duplicate[i+1:]
+    path_matrix.append(cache_list_first_element)
+    path_matrix.append(cache_list_other_elements)
+    
+cache_path_matrix = []
+for i in range(0, int(len(path_matrix)), 2):
+    cache_list = []
+    cache_list_folder_1 = []
+    cache_list_folder_2 = []
+    cache_list_folder_1.append(path_matrix[i])
+    cache_list_folder_2.append(path_matrix[i+1])
+    cache_list = cache_list_folder_1 + cache_list_folder_2
+    cache_path_matrix.append(cache_list)
+    
+path_matrix = cache_path_matrix
