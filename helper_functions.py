@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
 from paths import dataset_paths
+from paths import path_matrix
 
 from PIL import Image, ImageOps, ImageDraw
 import numpy as np
@@ -16,7 +17,11 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_curve, roc_auc_score
 from sklearn.metrics import precision_recall_curve
+from sklearn.manifold import TSNE
 
+import warnings
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def resize_and_keep_ratio(path, height, rgb=False):
     """
@@ -300,6 +305,25 @@ def plot_training(H):
     #plt.ylabel("Loss")
     plt.legend(loc="lower left")
     
+def plot_triplet_training(H):
+    """
+    Function for plotting model training with triplet loss
+    
+    Arguments
+        H: training history of the tensorflow model.fit function
+        
+    Returns:
+        Plot of the training loss
+    """
+    plt.style.use("ggplot")
+    plt.figure()
+    plt.plot(H.history["loss"], label="train_loss")
+    plt.plot(H.history["val_loss"], label="val_loss")
+    plt.title("Training and validation loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend(loc="lower left")
+    
 def load_and_split_data(path_x, path_y, split_size, batch_size, triplet=False):
     """
     Function for loading and splitting the. The validation size is fixed to 5% of the whole dataset.
@@ -518,3 +542,126 @@ def plot_triplet_roc_curve(model, dataset, model_name, emb_size):
     plt.ylim(0,)
     plt.legend()
     plt.show()
+    
+
+def plot_embeddings(height, width, path_matrix, model, emb_size):
+    """
+    Function for plotting triplet image embedding - 42 plots - 1 scribe against all other scribes in the dataset
+    
+    Arguments:
+        height: height of the image - on which is the model trained on
+        width: width of the image - on which is the model trained on
+        path_matrix: list of the data directories - scribe[0], all other scribes[1]
+        model: trained keras model on triplet loss
+    
+    Returns:
+        42 Matplotlib scatter subplots containing the embedded images
+    """
+    tsne = TSNE(n_components=2, n_iter=15000, metric="cosine")
+    
+    #Reference image
+    img_1 = resize_and_keep_ratio(path_matrix[0][0], height, rgb=True)
+    crop_1, crop_2 = crop_image_triplet_loss(img_1, width)
+    crop_1, crop_2 = crop_1 / 255. , crop_2 / 255.
+    img_1 = np.expand_dims(crop_1, 0)
+    img_2 = np.expand_dims(crop_2, 0)
+
+    #all other image
+    img_list = []
+    for i in range(len(path_matrix[1])):
+        i = 0
+        #check if image not 0 
+        while i < 1:
+            img = resize_and_keep_ratio(path_matrix[1][i], height, rgb=True)
+            if img == 0:
+                pass
+            else:
+                i = 1
+        crop = crop_image(img, width) / 255.
+        img = np.expand_dims(crop, 0)
+        img_list.append(img)
+        
+    embeddings = []
+
+    for i in range(len(img_list)):
+        cache_embedding_list = []
+        results = model.predict([img_1, img_2, img_list[i]])
+        emb_size = emb_size
+        anchor = results[0][:emb_size]
+        positive = results[0][emb_size:emb_size*2]
+        negative = results[0][emb_size*2:]
+        anchor_emb = tsne.fit_transform(anchor.reshape(-1,1))
+        positive_emb = tsne.fit_transform(positive.reshape(-1,1))
+        negative_emb = tsne.fit_transform(negative.reshape(-1,1))
+        cache_embedding_list.append(anchor_emb)
+        cache_embedding_list.append(positive_emb)
+        cache_embedding_list.append(negative_emb)
+        embeddings.append(cache_embedding_list)
+        
+    plt.rcParams["figure.figsize"] = (15,10)
+    fig, ax = plt.subplots(nrows=6, ncols=7)
+    count = 0
+    for row in ax:
+        for col in row:
+            col.scatter(embeddings[count][0][:,0], embeddings[count][0][:,1], color="red")
+            col.scatter(embeddings[count][1][:,0], embeddings[count][1][:,1], color="green")
+            col.scatter(embeddings[count][2][:,0], embeddings[count][2][:,1], color="blue")
+            #plt.title("Red: Anchor, Green: Positives, Blue: Negatives")
+            count += 1
+
+    fig.tight_layout()
+    plt.show()
+    
+    
+    
+def plot_single_embedding(height, width, dataset_paths, model, emb_size):
+    """
+    Function for plotting image embedding from two scribes
+    
+    
+    Arguments:
+        height: height of the image - on which is the model trained on
+        width: width of the image - on which is the model trained on
+        path_matrix: list of the data directories - scribe[0], all other scribes[1]
+        model: trained keras model on triplet loss
+    
+    Returns:
+        Scatterplots containing embedded images
+    """
+    
+    tsne = TSNE(n_components=2, n_iter=15000, metric="cosine")
+    
+    #select randomly two different scribes
+    folder_1, folder_2 = random.sample(dataset_paths, 2)
+    
+    folder_list_1 = []
+    folder_list_1.append(folder_1)
+    folder_list_2 = []
+    folder_list_2.append(folder_2)
+    
+    img_1 = resize_and_keep_ratio(folder_list_1, height, rgb=True)
+    img_2 = resize_and_keep_ratio(folder_list_1, height, rgb=True)
+    img_3 = resize_and_keep_ratio(folder_list_2, height, rgb=True)
+    
+    img_1 = crop_image(img_1, width) / 255.
+    img_2 = crop_image(img_2, width) / 255.
+    img_3 = crop_image(img_3, width) / 255.
+    
+    img_1 = np.expand_dims(img_1, 0)
+    img_2 = np.expand_dims(img_2, 0)
+    img_3 = np.expand_dims(img_3, 0)
+    
+    results = model.predict([img_1, img_2, img_3])
+    
+    anchor = results[0][:emb_size]
+    positive = results[0][emb_size:emb_size*2]
+    negative = results[0][emb_size*2:]
+    
+    anchor_emb = tsne.fit_transform(anchor.reshape(-1,1))
+    positive_emb = tsne.fit_transform(positive.reshape(-1,1))
+    negative_emb = tsne.fit_transform(negative.reshape(-1,1))
+    
+    plt.scatter(anchor_emb[:,0], anchor_emb[:,1], color="red")
+    plt.scatter(positive_emb[:,0], positive_emb[:,1], color="green")
+    plt.scatter(negative_emb[:,0], negative_emb[:,1], color="blue")
+    plt.title("Red: Anchor, Green: Positives, Blue: Negatives")
