@@ -326,7 +326,7 @@ def plot_triplet_training(H):
     
 def load_and_split_data(path_x, path_y, split_size, batch_size, triplet=False):
     """
-    Function for loading and splitting the. The validation size is fixed to 5% of the whole dataset.
+    Function for loading and splitting the dataset. The validation size is fixed to 5% of the whole dataset.
     
     Arguments:
         path_x: Path to x data
