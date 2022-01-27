@@ -665,3 +665,123 @@ def plot_single_embedding(height, width, dataset_paths, model, emb_size):
     plt.scatter(positive_emb[:,0], positive_emb[:,1], color="green")
     plt.scatter(negative_emb[:,0], negative_emb[:,1], color="blue")
     plt.title("Red: Anchor, Green: Positives, Blue: Negatives")
+    
+    
+def create_tf_data_datasets(anchor_images_path, positive_images_path, height, width, batch_size):
+    """
+    Function for creating tf data datasets input pipeline for triplet loss. The target shape must be changed in the "preprocess_image()" function!
+    
+    Arguments:
+        anchor_images_path: path to anchor dir in string_format
+        positive_images_path: path to positive dir in string_format
+        height: target height of image
+        width: target width of image
+        batch_size: desired batch size for training
+        
+    Returns:
+        train and val and test datasets
+    """
+    
+    #list and sort the data in folders
+    anchor_images = sorted([str(anchor_images_path + "/" + f) for f in os.listdir(anchor_images_path)])
+    positive_images = sorted([str(positive_images_path + "/" + f) for f in os.listdir(positive_images_path)])
+    image_count = len(anchor_images)
+    
+    #create anchor and positives dataset
+    anchor_dataset = tf.data.Dataset.from_tensor_slices(anchor_images)
+    positive_dataset = tf.data.Dataset.from_tensor_slices(positive_images)
+    
+    #randomize list for generating corresponding negative images
+    rng = np.random.RandomState(seed=42)
+    rng.shuffle(anchor_images)
+    rng.shuffle(positive_images)
+    negative_images = anchor_images + positive_images
+    np.random.RandomState(seed=32).shuffle(negative_images)
+    
+    negative_dataset = tf.data.Dataset.from_tensor_slices(negative_images)
+    negative_dataset = negative_dataset.shuffle(buffer_size=4096)
+    
+    #concaneta the datasets together and preprocess it
+    dataset = tf.data.Dataset.zip((anchor_dataset, positive_dataset, negative_dataset))
+    dataset = dataset.shuffle(buffer_size=1024)
+    dataset = dataset.map(preprocess_triplets)
+    
+    #split the dataset
+    train_dataset = dataset.take(round(image_count * 0.8))
+    val_dataset = dataset.skip(round(image_count * 0.8))
+    val_dataset = val_dataset.take(round(image_count * 0.75))
+    test_dataset = val_dataset.skip(round(image_count * 0.75))
+    
+    train_dataset = train_dataset.batch(batch_size, drop_remainder=False)
+    train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
+
+    val_dataset = val_dataset.batch(batch_size, drop_remainder=False)
+    val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
+    
+    test_dataset = test_dataset.batch(batch_size, drop_remainder=False)
+    test_dataset = test_dataset.prefetch(tf.data.AUTOTUNE)
+    
+    return train_dataset, val_dataset, test_dataset
+
+def preprocess_image(filename, target_shape=(224,224)):
+    """
+    Function for loading the images, preprocess is and reshape it to target shape
+    
+    Argumemnts:
+        filename: filepath in string_format
+    
+    Returns:
+        Preprocessed image
+    """
+
+    image_string = tf.io.read_file(filename)
+    image = tf.image.decode_jpeg(image_string, channels=3)
+    image = tf.image.convert_image_dtype(image, tf.float32)
+    image = tf.image.resize(image, target_shape)
+    return image
+
+
+def preprocess_triplets(anchor, positive, negative):
+    """
+    Function for loading and preprocessing triplet pairs
+    
+    Arguments:
+        anchor: path to anchor image
+        positive: path to positive image
+        anchor: path to negative image
+        
+    Returns:
+        Preprocessed image triplets
+    """
+
+    return (
+        preprocess_image(anchor),
+        preprocess_image(positive),
+        preprocess_image(negative),
+    )
+
+def visualize_triplets_tf_data_dataset(anchor, positive, negative):
+    """
+    Function for visualizing image triplets from batches
+    
+    Arguments:
+        anchor: negative image from tf data dataset
+        positive: positive image from td data dataset
+        negative: negative image from tf data dataset 
+        
+    Returns:
+        3x3 Matplotlib subplots
+    """
+
+    def show(ax, image):
+        ax.imshow(image)
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+
+    fig = plt.figure(figsize=(9, 9))
+
+    axs = fig.subplots(3, 3)
+    for i in range(3):
+        show(axs[i, 0], anchor[i])
+        show(axs[i, 1], positive[i])
+        show(axs[i, 2], negative[i])
