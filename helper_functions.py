@@ -679,7 +679,7 @@ def create_tf_data_datasets(anchor_images_path, positive_images_path, height, wi
         batch_size: desired batch size for training
         
     Returns:
-        train and val and test datasets
+        train and val datasets
     """
     
     #list and sort the data in folders
@@ -709,8 +709,6 @@ def create_tf_data_datasets(anchor_images_path, positive_images_path, height, wi
     #split the dataset
     train_dataset = dataset.take(round(image_count * 0.8))
     val_dataset = dataset.skip(round(image_count * 0.8))
-    val_dataset = val_dataset.take(round(image_count * 0.75))
-    test_dataset = val_dataset.skip(round(image_count * 0.75))
     
     train_dataset = train_dataset.batch(batch_size, drop_remainder=False)
     train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
@@ -718,10 +716,7 @@ def create_tf_data_datasets(anchor_images_path, positive_images_path, height, wi
     val_dataset = val_dataset.batch(batch_size, drop_remainder=False)
     val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
     
-    test_dataset = test_dataset.batch(batch_size, drop_remainder=False)
-    test_dataset = test_dataset.prefetch(tf.data.AUTOTUNE)
-    
-    return train_dataset, val_dataset, test_dataset
+    return train_dataset, val_dataset
 
 def preprocess_image(filename, target_shape=(224,224)):
     """
@@ -735,7 +730,13 @@ def preprocess_image(filename, target_shape=(224,224)):
     """
 
     image_string = tf.io.read_file(filename)
-    image = tf.image.decode_jpeg(image_string, channels=3)
+    
+    #Color image
+    #image = tf.image.decode_jpeg(image_string, channels=3)
+    
+    #Grayscale image
+    image = tf.image.decode_jpeg(image_string, channels=1)
+    
     image = tf.image.convert_image_dtype(image, tf.float32)
     image = tf.image.resize(image, target_shape)
     return image
@@ -785,3 +786,49 @@ def visualize_triplets_tf_data_dataset(anchor, positive, negative):
         show(axs[i, 0], anchor[i])
         show(axs[i, 1], positive[i])
         show(axs[i, 2], negative[i])
+        
+
+def plot_triplet_roc_curve_new(model, dataset, model_name):
+    """
+    Function for plotting the roc curve of siamese model trained on triplet loss
+    
+    Arguments:
+        model: trained keras classifier
+        dataset: tf.data.dataset
+        model_name: model name in string format
+        
+    Returns:
+        Matplotlib plot of the roc curve
+    """
+    
+    preds = model.predict(dataset)
+    y_score = []
+    y_true = []
+    
+    for i in range(len(preds[0])):
+        y_true.append(1)
+        y_score.append((preds[0][i]) * -1)
+        y_true.append(0)
+        y_score.append((preds[1][i]) * -1)
+
+    y_score = np.array(y_score)
+    y_true = np.array(y_true)
+    
+    fpr, tpr, thresholds = roc_curve(y_true, y_score)
+    auc_score = roc_auc_score(y_true, y_score)
+    auc_score = round(auc_score, 2)
+    
+    gmeans = np.sqrt(tpr * (1-fpr))
+    ix = np.argmax(gmeans)
+    
+    #plot the roc curve
+    plt.plot(fpr, tpr, label=f"{model_name} ,auc: {auc_score}")
+    plt.plot([0,1], [0,1], linestyle="--", label=f"No Skill")
+    plt.scatter(fpr[ix], tpr[ix], marker="o", color="black", label="Best")
+    plt.title(f'ROC curve, \nBest threshold: {thresholds[ix]}')
+    plt.xlabel('false positive rate')
+    plt.ylabel('true positive rate')
+    plt.xlim(0,)
+    plt.ylim(0,)
+    plt.legend()
+    plt.show() 
