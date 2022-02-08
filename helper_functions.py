@@ -831,4 +831,149 @@ def plot_triplet_roc_curve_new(model, dataset, model_name):
     plt.xlim(0,)
     plt.ylim(0,)
     plt.legend()
-    plt.show() 
+    plt.show()
+
+
+def preprocess_image_pairs_rgb(filename, target_shape=(105,105)):
+    """
+    Function for loading the images, preprocess is and reshape it to target shape
+
+    Argumemnts:
+        filename: filepath in string_format
+
+    Returns:
+        Preprocessed image
+    """
+
+    image_string = tf.io.read_file(filename)
+
+    #Color image
+    image = tf.image.decode_jpeg(image_string, channels=3)
+
+    image = tf.image.convert_image_dtype(image, tf.float32)
+    image = tf.image.resize(image, target_shape)
+    return image
+
+def preprocess_image_pairs_gray(filename, target_shape=(105,105)):
+    """
+    Function for loading the images, preprocess is and reshape it to target shape
+
+    Argumemnts:
+        filename: filepath in string_format
+
+    Returns:
+        Preprocessed image
+    """
+
+    image_string = tf.io.read_file(filename)
+
+    #Color image
+    image = tf.image.decode_jpeg(image_string, channels=1)
+
+    image = tf.image.convert_image_dtype(image, tf.float32)
+    image = tf.image.resize(image, target_shape)
+    return image
+
+def preprocess_pairs_rgb(anchor, positive):
+    """
+    Function for loading and preprocessing triplet pairs
+
+    Arguments:
+        anchor: path to anchor image
+        positive: path to positive image
+        anchor: path to negative image
+
+    Returns:
+        Preprocessed image triplets
+    """
+
+    return (
+        preprocess_image_pairs_rgb(anchor),
+        preprocess_image_pairs_rgb(positive),
+    )
+
+def preprocess_pairs_gray(anchor, positive):
+    """
+    Function for loading and preprocessing triplet pairs
+
+    Arguments:
+        anchor: path to anchor image
+        positive: path to positive image
+        anchor: path to negative image
+
+    Returns:
+        Preprocessed image triplets
+    """
+
+    return (
+        preprocess_image_pairs_gray(anchor),
+        preprocess_image_pairs_gray(positive),
+    )
+
+def create_tf_data_datasets_contrastive(anchor_images_path, positive_images_path, height, width, batch_size, rgb):
+
+    anchor_images = sorted([str(anchor_images_path + "/" + f) for f in os.listdir(anchor_images_path)])
+    positive_images = sorted([str(positive_images_path + "/" + f) for f in os.listdir(positive_images_path)])
+
+    image_count = len(anchor_images)
+
+    #select 50% of anchor and positive dataset
+    random_anchor_positive = random.sample(range(0, image_count), (round(image_count * 0.5)))
+    anchor_1 = [anchor_images[i] for i in random_anchor_positive]
+    positive = [positive_images[i] for i in random_anchor_positive]
+    y_same = np.ones([(len(anchor_1)), 1])
+
+    #select 50% of anchor and positive dataset - but for negative image pairs
+    #check randomness with while loop
+    i = 0
+    while i < 1:
+        #shuffle two image lists
+        random.shuffle(anchor_images)
+        random.shuffle(positive_images)
+        random_anchor_negative_1 = random.sample(range(0, image_count), (round(image_count * 0.5)))
+        random_anchor_negative_2 = random.sample(range(0, image_count), (round(image_count * 0.5)))
+        anchor_2 = [anchor_images[i] for i in random_anchor_negative_1]
+        negative = [positive_images[i] for i in random_anchor_negative_2]
+        #check if there are no same image pairs in dataset
+        if (set(anchor_2) == set(negative)) == True:
+            pass
+        else:
+            i += 1
+
+    y_different = np.zeros([(len(anchor_2)), 1])
+
+    #concatenatoe the lists
+    anchor_images = anchor_1 + anchor_2
+    positive_negative_images = positive + negative
+    y = np.append(y_same, y_different)
+
+    #create tf data datasets
+    anchor = tf.data.Dataset.from_tensor_slices(anchor_images)
+    pos_neg = tf.data.Dataset.from_tensor_slices(positive_negative_images)
+    y = tf.data.Dataset.from_tensor_slices(y)
+
+    #zip the datasets
+    dataset = tf.data.Dataset.zip((anchor, pos_neg))
+    if rgb == True:
+
+        dataset = dataset.map(preprocess_pairs_rgb)
+    else:
+        dataset = dataset.map(preprocess_pairs_gray)
+
+    dataset = tf.data.Dataset.zip((dataset, y))
+
+    dataset = dataset.shuffle(buffer_size=image_count)
+
+    #split the dataset
+    train_dataset = dataset.take(round(image_count * 0.8))
+    val_dataset = dataset.skip(round(image_count * 0.8))
+
+    train_dataset = train_dataset.shuffle(buffer_size=(image_count))
+    train_dataset = train_dataset.batch(batch_size, drop_remainder=False)
+    train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
+
+    val_dataset = val_dataset.shuffle(buffer_size=(image_count))
+    val_dataset = val_dataset.batch(batch_size, drop_remainder=False)
+    val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
+
+    return train_dataset, val_dataset
