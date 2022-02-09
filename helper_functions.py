@@ -7,6 +7,7 @@ from paths import dataset_paths
 from paths import path_matrix
 
 from PIL import Image, ImageOps, ImageDraw
+
 import numpy as np
 from numpy import load
 
@@ -18,6 +19,7 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_curve, roc_auc_score
 from sklearn.metrics import precision_recall_curve
 from sklearn.manifold import TSNE
+from sklearn.metrics import classification_report
 
 import warnings
 
@@ -977,3 +979,89 @@ def create_tf_data_datasets_contrastive(anchor_images_path, positive_images_path
     val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
 
     return train_dataset, val_dataset
+
+def create_tf_data_testset_contrastive(anchor_images_path, positive_images_path, height, width, rgb):
+
+
+    anchor_images = sorted([str(anchor_images_path + "/" + f) for f in os.listdir(anchor_images_path)])
+    positive_images = sorted([str(positive_images_path + "/" + f) for f in os.listdir(positive_images_path)])
+
+    image_count = len(anchor_images)
+
+    #select 50% of anchor and positive dataset
+    random_anchor_positive = random.sample(range(0, image_count), (round(image_count * 0.5)))
+    anchor_1 = [anchor_images[i] for i in random_anchor_positive]
+    positive = [positive_images[i] for i in random_anchor_positive]
+    y_same = np.ones([(len(anchor_1)), 1])
+
+    #select 50% of anchor and positive dataset - but for negative image pairs
+    #check randomness with while loop
+    i = 0
+    while i < 1:
+        #shuffle two image lists
+        random.shuffle(anchor_images)
+        random.shuffle(positive_images)
+        random_anchor_negative_1 = random.sample(range(0, image_count), (round(image_count * 0.5)))
+        random_anchor_negative_2 = random.sample(range(0, image_count), (round(image_count * 0.5)))
+        anchor_2 = [anchor_images[i] for i in random_anchor_negative_1]
+        negative = [positive_images[i] for i in random_anchor_negative_2]
+        #check if there are no same image pairs in dataset
+        if (set(anchor_2) == set(negative)) == True:
+            pass
+        else:
+            i += 1
+
+    y_different = np.zeros([(len(anchor_2)), 1])
+
+    #concatenatoe the lists
+    anchor_images = anchor_1 + anchor_2
+    positive_negative_images = positive + negative
+    y = np.append(y_same, y_different)
+
+    #create tf data datasets
+    anchor = tf.data.Dataset.from_tensor_slices(anchor_images)
+    pos_neg = tf.data.Dataset.from_tensor_slices(positive_negative_images)
+    y = tf.data.Dataset.from_tensor_slices(y)
+
+    #zip the datasets
+    dataset = tf.data.Dataset.zip((anchor, pos_neg))
+    if rgb == True:
+
+        dataset = dataset.map(preprocess_pairs_rgb)
+    else:
+        dataset = dataset.map(preprocess_pairs_gray)
+
+    test_set = tf.data.Dataset.zip((dataset, y))
+
+    return test_set
+
+def get_classification_report(test_dataset, model):
+
+    images, labels = tuple(zip(*test_dataset))
+    images = np.array(images)
+    labels = np.array(labels)
+    images_1 = images[:, 0]
+    images_2 = images[:, 1]
+
+    prediction_probs = model.predict([images_1, images_2])
+    predictions = tf.round(prediction_probs)
+    predictions = np.array(predictions)
+
+    report = classification_report(labels, predictions, output_dict=True)
+
+    precision = report["macro avg"]["precision"]
+    recall = report["macro avg"]["recall"]
+    f1_score = report["macro avg"]["f1-score"]
+
+    preds_wandb = []
+    for i in range(len(prediction_probs)):
+        cache = []
+        pred_1 = (1 - prediction_probs[i])
+        pred_2 = (prediction_probs[i])
+        cache.append(pred_1)
+        cache.append(pred_2)
+        preds_wandb.append(cache)
+
+    preds_wandb = np.array(preds_wandb)
+
+    return precision, recall, f1_score, preds_wandb, labels
