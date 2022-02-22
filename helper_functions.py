@@ -228,6 +228,21 @@ def manhattan_distance(vects):
     x, y = vects
     return K.sum(K.abs(x-y), axis=1, keepdims=True)
 
+def cosine_distance(vests):
+    """
+    Calculates the manhatten distance between two vectors
+
+    Arguments:
+        vectors: List containing two tensors of same length
+
+    Return:
+        Tensor containing euclidian distance between vectors
+    """
+    x, y = vests
+    x = K.l2_normalize(x, axis=-1)
+    y = K.l2_normalize(y, axis=-1)
+    return K.mean(x * y, axis=-1, keepdims=True)
+
 def contrastive_loss(y_true, y_pred, margin=1):
     """
     Calculates the contrastive loss
@@ -849,7 +864,7 @@ def plot_triplet_roc_curve_new(model, dataset, model_name):
     plt.show()
 
 
-def preprocess_image_pairs_rgb(filename, target_shape=(224,224)):
+def preprocess_image_pairs_rgb(filename, target_shape=(113,113)):
     """
     Function for loading the images, preprocess is and reshape it to target shape
     Argumemnts:
@@ -867,7 +882,7 @@ def preprocess_image_pairs_rgb(filename, target_shape=(224,224)):
     image = tf.image.resize(image, target_shape)
     return image
 
-def preprocess_image_pairs_gray(filename, target_shape=(224,224)):
+def preprocess_image_pairs_gray(filename, target_shape=(113,113)):
     """
     Function for loading the images, preprocess is and reshape it to target shape
     Argumemnts:
