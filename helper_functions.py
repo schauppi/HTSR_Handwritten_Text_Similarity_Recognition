@@ -969,6 +969,15 @@ def create_tf_data_datasets_contrastive(anchor_images_path, positive_images_path
     positive_negative_images = positive + negative
     y = np.append(y_same, y_different)
 
+    shuffle_list = list(zip(anchor_images, positive_negative_images, y))
+    random.shuffle(shuffle_list)
+
+    anchor_images, positive_negative_images, y = zip(*shuffle_list)
+
+    anchor_images = list(anchor_images)
+    positive_negative_images = list(positive_negative_images)
+    y = list(y)
+    
     #create tf data datasets
     anchor = tf.data.Dataset.from_tensor_slices(anchor_images)
     pos_neg = tf.data.Dataset.from_tensor_slices(positive_negative_images)
@@ -976,6 +985,8 @@ def create_tf_data_datasets_contrastive(anchor_images_path, positive_images_path
 
     #zip the datasets
     dataset = tf.data.Dataset.zip((anchor, pos_neg))
+
+
     if rgb == True:
 
         dataset = dataset.map(preprocess_pairs_rgb)
@@ -984,17 +995,17 @@ def create_tf_data_datasets_contrastive(anchor_images_path, positive_images_path
 
     dataset = tf.data.Dataset.zip((dataset, y))
 
-    dataset = dataset.shuffle(buffer_size=image_count)
+    dataset = dataset.shuffle(buffer_size=5000)
 
     #split the dataset
     train_dataset = dataset.take(round(image_count * 0.8))
     val_dataset = dataset.skip(round(image_count * 0.8))
 
-    train_dataset = train_dataset.shuffle(buffer_size=(image_count))
+    train_dataset = train_dataset.shuffle(buffer_size=(5000))
     train_dataset = train_dataset.batch(batch_size, drop_remainder=False)
     train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
 
-    val_dataset = val_dataset.shuffle(buffer_size=(image_count))
+    val_dataset = val_dataset.shuffle(buffer_size=(5000))
     val_dataset = val_dataset.batch(batch_size, drop_remainder=False)
     val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
 
