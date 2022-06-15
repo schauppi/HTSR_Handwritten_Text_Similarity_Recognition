@@ -295,6 +295,9 @@ def triplet_loss_cosine(alpha, emb_size):
         return tf.keras.backend.clip(distance1 - distance2 + alpha, 0., None)
     return loss
 
+def l2Norm(x):
+    return  K.l2_normalize(x, axis=-1)
+
 def load_arrays(path1, path2):
     """
     Function for load .npz files from disc
@@ -864,7 +867,7 @@ def plot_triplet_roc_curve_new(model, dataset, model_name):
     plt.show()
 
 
-def preprocess_image_pairs_rgb(filename, target_shape=(113,113)):
+def preprocess_image_pairs_rgb(filename, target_shape=(112,112)):
     """
     Function for loading the images, preprocess is and reshape it to target shape
     Argumemnts:
@@ -882,7 +885,7 @@ def preprocess_image_pairs_rgb(filename, target_shape=(113,113)):
     image = tf.image.resize(image, target_shape)
     return image
 
-def preprocess_image_pairs_gray(filename, target_shape=(113,113)):
+def preprocess_image_pairs_gray(filename, target_shape=(112,112)):
     """
     Function for loading the images, preprocess is and reshape it to target shape
     Argumemnts:
@@ -968,7 +971,7 @@ def create_tf_data_datasets_contrastive(anchor_images_path, positive_images_path
     anchor_images = anchor_1 + anchor_2
     positive_negative_images = positive + negative
     y = np.append(y_same, y_different)
-
+    
     shuffle_list = list(zip(anchor_images, positive_negative_images, y))
     random.shuffle(shuffle_list)
 
@@ -978,36 +981,39 @@ def create_tf_data_datasets_contrastive(anchor_images_path, positive_images_path
     positive_negative_images = list(positive_negative_images)
     y = list(y)
     
-    #create tf data datasets
-    anchor = tf.data.Dataset.from_tensor_slices(anchor_images)
-    pos_neg = tf.data.Dataset.from_tensor_slices(positive_negative_images)
-    y = tf.data.Dataset.from_tensor_slices(y)
+    with tf.device('/cpu:0'):
+        num_threads = 32
+        
+        #create tf data datasets
+        anchor = tf.data.Dataset.from_tensor_slices(anchor_images)
+        pos_neg = tf.data.Dataset.from_tensor_slices(positive_negative_images)
+        y = tf.data.Dataset.from_tensor_slices(y)
 
-    #zip the datasets
-    dataset = tf.data.Dataset.zip((anchor, pos_neg))
+        #zip the datasets
+        dataset = tf.data.Dataset.zip((anchor, pos_neg))
 
 
-    if rgb == True:
+        if rgb == True:
 
-        dataset = dataset.map(preprocess_pairs_rgb)
-    else:
-        dataset = dataset.map(preprocess_pairs_gray)
+            dataset = dataset.map(preprocess_pairs_rgb, num_parallel_calls=num_threads)
+        else:
+            dataset = dataset.map(preprocess_pairs_gray, num_parallel_calls=num_threads)
 
-    dataset = tf.data.Dataset.zip((dataset, y))
+        dataset = tf.data.Dataset.zip((dataset, y))
 
-    dataset = dataset.shuffle(buffer_size=5000)
+        #dataset = dataset.shuffle(buffer_size=5000)
 
-    #split the dataset
-    train_dataset = dataset.take(round(image_count * 0.8))
-    val_dataset = dataset.skip(round(image_count * 0.8))
+        #split the dataset
+        train_dataset = dataset.take(round(image_count * 0.8))
+        val_dataset = dataset.skip(round(image_count * 0.8))
 
-    train_dataset = train_dataset.shuffle(buffer_size=(5000))
-    train_dataset = train_dataset.batch(batch_size, drop_remainder=False)
-    train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
+        train_dataset = train_dataset.shuffle(buffer_size=(90000))
+        train_dataset = train_dataset.batch(batch_size, drop_remainder=False)
+        train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
 
-    val_dataset = val_dataset.shuffle(buffer_size=(5000))
-    val_dataset = val_dataset.batch(batch_size, drop_remainder=False)
-    val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
+        val_dataset = val_dataset.shuffle(buffer_size=(90000))
+        val_dataset = val_dataset.batch(batch_size, drop_remainder=False)
+        val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
 
     return train_dataset, val_dataset
 
@@ -1049,20 +1055,23 @@ def create_tf_data_testset_contrastive(anchor_images_path, positive_images_path,
     positive_negative_images = positive + negative
     y = np.append(y_same, y_different)
 
-    #create tf data datasets
-    anchor = tf.data.Dataset.from_tensor_slices(anchor_images)
-    pos_neg = tf.data.Dataset.from_tensor_slices(positive_negative_images)
-    y = tf.data.Dataset.from_tensor_slices(y)
+    with tf.device('/cpu:0'):
+        num_threads = 32
+        
+        #create tf data datasets
+        anchor = tf.data.Dataset.from_tensor_slices(anchor_images)
+        pos_neg = tf.data.Dataset.from_tensor_slices(positive_negative_images)
+        y = tf.data.Dataset.from_tensor_slices(y)
 
-    #zip the datasets
-    dataset = tf.data.Dataset.zip((anchor, pos_neg))
-    if rgb == True:
+        #zip the datasets
+        dataset = tf.data.Dataset.zip((anchor, pos_neg))
+        if rgb == True:
 
-        dataset = dataset.map(preprocess_pairs_rgb)
-    else:
-        dataset = dataset.map(preprocess_pairs_gray)
+            dataset = dataset.map(preprocess_pairs_rgb, num_parallel_calls=num_threads)
+        else:
+            dataset = dataset.map(preprocess_pairs_gray, num_parallel_calls=num_threads)
 
-    test_set = tf.data.Dataset.zip((dataset, y))
+        test_set = tf.data.Dataset.zip((dataset, y))
 
     return test_set
 
@@ -1096,3 +1105,147 @@ def get_classification_report(test_dataset, model):
     preds_wandb = np.array(preds_wandb)
 
     return precision, recall, f1_score, preds_wandb, labels
+
+def create_tf_data_datasets_contrastive_new(anchor_images_path, positive_images_path,ground_path, height, width, batch_size, rgb):
+    
+    with open(ground_path + "/" + "labels.txt", "r") as f:
+        content = f.readlines()
+    labels = []
+    for i in range(len(content)):
+        labels.append(int(content[i].strip('\n')))
+
+    labels = np.array(labels)
+    y = np.expand_dims(labels, 1)
+    y = y.astype('float32')
+
+    anchor_images = sorted([str(anchor_images_path + "/" + f) for f in os.listdir(anchor_images_path)])
+    positive_images = sorted([str(positive_images_path + "/" + f) for f in os.listdir(positive_images_path)])
+    image_count = len(anchor_images)
+
+    shuffle_list = list(zip(anchor_images, positive_images, y))
+    random.shuffle(shuffle_list)
+    anchor_images, positive_negative_images, y = zip(*shuffle_list)
+
+    anchor_images = list(anchor_images)
+    positive_negative_images = list(positive_negative_images)
+    y = list(y)
+
+    with tf.device('/cpu:0'):
+        num_threads = 32
+
+        #create tf data datasets
+        anchor = tf.data.Dataset.from_tensor_slices(anchor_images)
+        pos_neg = tf.data.Dataset.from_tensor_slices(positive_negative_images)
+        y = tf.data.Dataset.from_tensor_slices(y)
+
+        #zip the datasets
+        dataset = tf.data.Dataset.zip((anchor, pos_neg))
+
+        if rgb == True:
+
+            dataset = dataset.map(preprocess_pairs_rgb, num_parallel_calls=num_threads)
+        else:
+            dataset = dataset.map(preprocess_pairs_gray, num_parallel_calls=num_threads)
+
+        dataset = tf.data.Dataset.zip((dataset, y))
+
+        #dataset = dataset.shuffle(buffer_size=5000)
+
+        #split the dataset
+        train_dataset = dataset.take(round(image_count * 0.8))
+        val_dataset = dataset.skip(round(image_count * 0.8))
+
+        train_dataset = train_dataset.shuffle(buffer_size=(90000))
+        train_dataset = train_dataset.batch(batch_size, drop_remainder=False)
+        train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
+
+        val_dataset = val_dataset.shuffle(buffer_size=(90000))
+        val_dataset = val_dataset.batch(batch_size, drop_remainder=False)
+        val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
+        
+    return train_dataset, val_dataset
+
+def create_tf_data_testset_contrastive_new(anchor_images_path, positive_images_path,ground_path, height, width, batch_size, rgb):
+    
+    with open(ground_path + "/" + "labels.txt", "r") as f:
+        content = f.readlines()
+    labels = []
+    for i in range(len(content)):
+        labels.append(int(content[i].strip('\n')))
+
+    labels = np.array(labels)
+    y = np.expand_dims(labels, 1)
+    y = y.astype('float32')
+
+    anchor_images = sorted([str(anchor_images_path + "/" + f) for f in os.listdir(anchor_images_path)])
+    positive_images = sorted([str(positive_images_path + "/" + f) for f in os.listdir(positive_images_path)])
+    image_count = len(anchor_images)
+
+    shuffle_list = list(zip(anchor_images, positive_images, y))
+    random.shuffle(shuffle_list)
+    anchor_images, positive_negative_images, y = zip(*shuffle_list)
+
+    anchor_images = list(anchor_images)
+    positive_negative_images = list(positive_negative_images)
+    y = list(y)
+
+    with tf.device('/cpu:0'):
+        num_threads = 32
+
+        #create tf data datasets
+        anchor = tf.data.Dataset.from_tensor_slices(anchor_images)
+        pos_neg = tf.data.Dataset.from_tensor_slices(positive_negative_images)
+        y = tf.data.Dataset.from_tensor_slices(y)
+
+        #zip the datasets
+        dataset = tf.data.Dataset.zip((anchor, pos_neg))
+
+        if rgb == True:
+
+            dataset = dataset.map(preprocess_pairs_rgb, num_parallel_calls=num_threads)
+        else:
+            dataset = dataset.map(preprocess_pairs_gray, num_parallel_calls=num_threads)
+
+        dataset = tf.data.Dataset.zip((dataset, y))
+        
+    return dataset
+
+def crop_demo_image(image_1_path, image_2_path, height, width, crop_width):
+
+    image_1 = Image.open(image_1_path)
+    image_2 = Image.open(image_2_path)
+
+    if image_1.size[0] > crop_width and image_2.size[0] > crop_width:
+
+        height_precent_image_1 = (height / float(image_1.size[1]))
+        height_precent_image_2 = (height / float(image_2.size[1]))
+
+        resized_width_image_1 = int((float(image_1.size[0]) * float(height_precent_image_1)))
+        resized_width_image_2 = int((float(image_2.size[0]) * float(height_precent_image_2)))
+
+        image_1 = image_1.resize((resized_width_image_1, height), Image.NEAREST)
+        image_2 = image_2.resize((resized_width_image_2, height), Image.NEAREST)
+
+        center_image_1 = int(image_1.size[0] / 2)
+        center_image_2 = int(image_2.size[0] / 2)
+
+        x_1 = int(center_image_1 - (crop_width/2))
+        x_2 = int(center_image_2 - (crop_width/2))
+
+        #crop randomly  image out of source image
+        img_array_1 = np.array(image_1)
+        img_array_2 = np.array(image_2)
+
+        anchor = img_array_1[0:height, x_1:x_1+crop_width]
+        positive = img_array_2[0:height, x_2:x_2+crop_width]
+
+        anchor = Image.fromarray(anchor)
+        positive = Image.fromarray(positive)
+
+        anchor = anchor.resize((width, height))
+        positive = positive.resize((width, height))
+
+        return anchor, positive
+
+    else:
+        print("Images are too small for cropping...")
